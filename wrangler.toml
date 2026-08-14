@@ -1,32 +1,13 @@
-# Worker Configuration
 name = "multi-time-link-opener"
-main = "src/index.js"
+main = "index.js"
 compatibility_date = "2024-12-18"
 
-# Environment Variables
 [vars]
 MAX_TEST_COUNT = 500
 REQUEST_TIMEOUT_MS = 15000
 RATE_LIMIT_PER_MINUTE = 35
-ALLOWED_HOSTS = "example.com,api.example.com,test.com"
-PROXY_LIST = ""
-PROXY_SERVICE_ENDPOINT = ""
-PROXY_API_KEY = ""
+ALLOWED_HOSTS = "*"
 
-# Production Environment
+# Production environment – keep inline table single‑line
 [env.production]
-vars = { 
-  MAX_TEST_COUNT = 500, 
-  REQUEST_TIMEOUT_MS = 15000,
-  RATE_LIMIT_PER_MINUTE = 35,
-  ALLOWED_HOSTS = "example.com,api.example.com,test.com"
-}
-
-# Development Environment
-[env.dev]
-vars = { 
-  MAX_TEST_COUNT = 50, 
-  REQUEST_TIMEOUT_MS = 10000,
-  RATE_LIMIT_PER_MINUTE = 10,
-  ALLOWED_HOSTS = "localhost,test.com"
-}
+vars = { MAX_TEST_COUNT = 500, REQUEST_TIMEOUT_MS = 15000, RATE_LIMIT_PER_MINUTE = 35, ALLOWED_HOSTS = "*" }
