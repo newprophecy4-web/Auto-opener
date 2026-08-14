@@ -1,7 +1,7 @@
 {
   "name": "multi-time-link-opener",
   "version": "4.0.0",
-  "description": "Multi Time Link Opener with BrightData support",
+  "description": "Advanced link opener with BrightData proxy support",
   "main": "index.js",
   "scripts": {
     "deploy": "wrangler deploy",
