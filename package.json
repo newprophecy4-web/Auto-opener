@@ -1,17 +1,13 @@
 {
   "name": "multi-time-link-opener",
   "version": "4.0.0",
-  "description": "Multi Time Link Opener - Advanced Bypass System",
-  "main": "src/index.js",
+  "description": "Multi Time Link Opener with BrightData support",
+  "main": "index.js",
   "scripts": {
     "deploy": "wrangler deploy",
-    "dev": "wrangler dev",
-    "build": "wrangler build"
+    "dev": "wrangler dev"
   },
   "dependencies": {
     "wrangler": "^4.123.0"
-  },
-  "devDependencies": {
-    "@cloudflare/workers-types": "^4.20241218.0"
   }
 }
