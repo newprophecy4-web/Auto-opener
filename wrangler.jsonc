@@ -1,13 +1,17 @@
-{
-  "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "multi-time-link-opener",
-  "main": "worker.js",
-  "compatibility_date": "2026-08-14",
-  "workers_dev": true,
-  "vars": {
-    "ALLOWED_HOSTS": "example.com,api.example.com",
-    "MAX_TEST_COUNT": "20",
-    "REQUEST_TIMEOUT_MS": "10000",
-    "RATE_LIMIT_PER_MINUTE": "10"
-  }
-}
+name = "multi-time-link-opener"
+main = "src/index.js"
+compatibility_date = "2024-12-18"
+
+[vars]
+ALLOWED_HOSTS = "https://auto-opener.newprophecy4.workers.dev/"
+MAX_TEST_COUNT = "500"
+REQUEST_TIMEOUT_MS = "15000"
+RATE_LIMIT_PER_MINUTE = "35"
+
+# Proxy Configuration (Optional)
+# PROXY_LIST = "http://user:pass@proxy1.com:8080"
+# PROXY_SERVICE_ENDPOINT = "https://your-proxy-service.com/request"
+# PROXY_API_KEY = "your-api-key"
+
+[env.production]
+vars = { ALLOWED_HOSTS = "production.com" }
