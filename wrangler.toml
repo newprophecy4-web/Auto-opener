@@ -8,6 +8,8 @@ REQUEST_TIMEOUT_MS = 15000
 RATE_LIMIT_PER_MINUTE = 35
 ALLOWED_HOSTS = "*"
 
-# Production environment – keep inline table single‑line
-[env.production]
-vars = { MAX_TEST_COUNT = 500, REQUEST_TIMEOUT_MS = 15000, RATE_LIMIT_PER_MINUTE = 35, ALLOWED_HOSTS = "*" }
+[env.production.vars]
+MAX_TEST_COUNT = 500
+REQUEST_TIMEOUT_MS = 15000
+RATE_LIMIT_PER_MINUTE = 35
+ALLOWED_HOSTS = "*"
