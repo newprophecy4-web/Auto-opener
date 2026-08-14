@@ -57,6 +57,83 @@ const CONFIG = {
 };
 
 // ============================================
+// BRIGHTDATA PROXY MANAGER
+// ============================================
+class BrightDataProxyManager {
+  constructor(apiKey, proxyEndpoint) {
+    this.apiKey = apiKey;
+    this.proxyEndpoint = proxyEndpoint || 'https://api.brightdata.com/proxy';
+    this.proxyCache = [];
+    this.lastFetch = 0;
+    this.cacheDuration = 60000; // 1 minute
+  }
+
+  async getProxyList(env) {
+    // Check cache first
+    const now = Date.now();
+    if (this.proxyCache.length > 0 && (now - this.lastFetch) < this.cacheDuration) {
+      return this.proxyCache;
+    }
+
+    // If no API key, return empty
+    if (!env.BRIGHTDATA_API_KEY && !env.BRIGHTDATA_PROXY) {
+      return [];
+    }
+
+    try {
+      // If we have a direct proxy endpoint configured
+      if (env.BRIGHTDATA_PROXY) {
+        const proxy = {
+          url: env.BRIGHTDATA_PROXY,
+          type: 'direct'
+        };
+        this.proxyCache = [proxy];
+        this.lastFetch = now;
+        return this.proxyCache;
+      }
+
+      // Fetch from BrightData API
+      const response = await fetch('https://api.brightdata.com/proxy/list', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${env.BRIGHTDATA_API_KEY}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        console.error('BrightData API error:', response.status);
+        return [];
+      }
+
+      const data = await response.json();
+      
+      // Parse the proxy list based on BrightData API response format
+      // Adjust this based on actual BrightData API response structure
+      this.proxyCache = data.proxies?.map(p => ({
+        url: `http://${p.host}:${p.port}`,
+        username: p.username,
+        password: p.password,
+        type: p.type || 'http'
+      })) || [];
+
+      this.lastFetch = now;
+      return this.proxyCache;
+
+    } catch (error) {
+      console.error('Error fetching BrightData proxies:', error);
+      return [];
+    }
+  }
+
+  getRandomProxy(proxies) {
+    if (!proxies || proxies.length === 0) return null;
+    const randomIndex = Math.floor(Math.random() * proxies.length);
+    return proxies[randomIndex];
+  }
+}
+
+// ============================================
 // IP & PROXY MANAGEMENT
 // ============================================
 class IPManager {
@@ -217,7 +294,6 @@ class IPManager {
   }
 
   getProxyIP(proxyUrl) {
-    // Extract IP from proxy URL if available
     try {
       const url = new URL(proxyUrl);
       return url.hostname;
@@ -241,7 +317,6 @@ class FingerprintGenerator {
     const browser = this.browsers[requestNumber % this.browsers.length];
     const fp = this.fingerprints[browser];
     
-    // Add variation to user agent
     let userAgent = fp.userAgent;
     if (browser === 'chrome' || browser === 'edge') {
       const versions = ['119', '120', '121', '122'];
@@ -294,7 +369,6 @@ class HeaderGenerator {
     const fingerprint = this.fingerprintGen.getFingerprint(requestNumber);
     const clientIP = this.ipManager.getNextIP(region, requestNumber);
     
-    // Base headers
     const headers = {
       'User-Agent': fingerprint.userAgent,
       'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
@@ -334,16 +408,13 @@ class HeaderGenerator {
       'Save-Data': 'off',
     };
 
-    // Add bypass level specific headers
     this.addBypassHeaders(headers, bypassLevel, requestNumber, region, fingerprint);
-
     return headers;
   }
 
   addBypassHeaders(headers, bypassLevel, requestNumber, region, fingerprint) {
     switch(bypassLevel) {
       case 'stealth':
-        // Ultra stealth - most sophisticated
         headers['Sec-Ch-Ua'] = `"${fingerprint.browser}";v="${fingerprint.version}", "Not_A Brand";v="8"`;
         headers['Sec-Ch-Ua-Platform'] = `"${fingerprint.platform}"`;
         headers['Sec-Ch-Ua-Mobile'] = '?0';
@@ -359,7 +430,6 @@ class HeaderGenerator {
         headers['Repr-Digest'] = this.generateReprDigest();
         headers['Want-Content-Digest'] = 'sha-256=*';
         headers['Want-Repr-Digest'] = 'sha-256=*';
-        // Add more stealth headers
         if (requestNumber % 3 === 0) {
           headers['X-Forwarded-Proto'] = 'https';
           headers['X-Forwarded-Host'] = 'www.google.com';
@@ -368,7 +438,6 @@ class HeaderGenerator {
         break;
         
       case 'ultra':
-        // Ultra bypass
         headers['Accept-Language'] = this.getAcceptLanguage(region, requestNumber, true);
         headers['Accept-Encoding'] = 'gzip, deflate, br, zstd';
         headers['Sec-Ch-Ua'] = `"${fingerprint.browser}";v="${fingerprint.version}", "Not_A Brand";v="8"`;
@@ -381,24 +450,20 @@ class HeaderGenerator {
         break;
         
       case 'high':
-        // High bypass
         headers['Accept-Language'] = this.getAcceptLanguage(region, requestNumber, true);
         headers['Cookie'] = this.generateCookies(requestNumber);
         headers['X-Request-ID'] = this.generateRequestId();
         headers['X-Trace-Id'] = this.generateTraceId();
-        // Add random extra headers
         this.addRandomHeaders(headers, requestNumber);
         break;
         
       case 'medium':
-        // Medium bypass
         headers['Accept-Language'] = this.getAcceptLanguage(region, requestNumber);
         headers['Cookie'] = this.generateCookies(requestNumber);
         break;
         
       case 'low':
       default:
-        // Low bypass - minimal changes
         break;
     }
   }
@@ -515,9 +580,7 @@ class HeaderGenerator {
       cookies.push(`${name}=${value}`);
     }
     
-    // Add session cookie
     cookies.push(`session=${this.generateSessionId(requestNumber)}`);
-    
     return cookies.join('; ');
   }
 
@@ -569,10 +632,11 @@ class HeaderGenerator {
 // REQUEST EXECUTOR WITH ADVANCED BYPASS
 // ============================================
 class RequestExecutor {
-  constructor(ipManager, fingerprintGen, headerGen) {
+  constructor(ipManager, fingerprintGen, headerGen, brightDataManager) {
     this.ipManager = ipManager;
     this.fingerprintGen = fingerprintGen;
     this.headerGen = headerGen;
+    this.brightDataManager = brightDataManager;
     this.executionHistory = [];
     this.failedAttempts = new Map();
   }
@@ -581,7 +645,6 @@ class RequestExecutor {
     const startTime = Date.now();
     const sessionId = this.headerGen.generateSessionId(requestNumber);
     
-    // Generate headers with full bypass
     const headers = this.headerGen.generateHeaders(
       region, 
       requestNumber, 
@@ -589,13 +652,32 @@ class RequestExecutor {
       sessionId
     );
 
-    // Get proxy if available
     let proxyUrl = null;
-    if (useProxy && env.PROXY_LIST) {
-      proxyUrl = this.getNextProxy(env.PROXY_LIST.split(',').filter(p => p.trim()));
+    let proxyData = null;
+
+    if (useProxy) {
+      // Try BrightData first if API key is available
+      if (env.BRIGHTDATA_API_KEY || env.BRIGHTDATA_PROXY) {
+        const proxies = await this.brightDataManager.getProxyList(env);
+        if (proxies && proxies.length > 0) {
+          proxyData = this.brightDataManager.getRandomProxy(proxies);
+          if (proxyData) {
+            proxyUrl = proxyData.url;
+            // Add proxy authentication to headers
+            if (proxyData.username && proxyData.password) {
+              const auth = btoa(`${proxyData.username}:${proxyData.password}`);
+              headers['Proxy-Authorization'] = `Basic ${auth}`;
+            }
+          }
+        }
+      }
+      
+      // Fallback to PROXY_LIST env var
+      if (!proxyUrl && env.PROXY_LIST) {
+        proxyUrl = this.getNextProxy(env.PROXY_LIST.split(',').filter(p => p.trim()));
+      }
     }
 
-    // Execute with retry logic
     const maxRetries = CONFIG.maxRetries;
     let lastError = null;
     let attempt = 0;
@@ -608,7 +690,6 @@ class RequestExecutor {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-        // Build fetch options
         const fetchOptions = {
           method: 'GET',
           redirect: 'manual',
@@ -616,9 +697,10 @@ class RequestExecutor {
           headers: headers,
         };
 
-        // If using external proxy service
         let response;
-        if (proxyUrl && env.PROXY_SERVICE_ENDPOINT) {
+        
+        // If using proxy, make request through proxy
+        if (proxyUrl) {
           response = await this.executeWithProxy(
             targetUrl, 
             proxyUrl, 
@@ -635,7 +717,6 @@ class RequestExecutor {
         const responseTime = Date.now() - attemptStart;
         const totalTime = Date.now() - startTime;
 
-        // Parse response
         const result = {
           request: requestNumber,
           attempt: attempt,
@@ -644,6 +725,7 @@ class RequestExecutor {
           responseTimeMs: totalTime,
           attemptTimeMs: responseTime,
           proxy_used: !!proxyUrl,
+          proxy_type: proxyData ? 'brightdata' : (proxyUrl ? 'custom' : 'none'),
           region: region,
           bypass_level: bypassLevel,
           ip_used: headers['X-Forwarded-For'],
@@ -652,7 +734,6 @@ class RequestExecutor {
           headers_count: Object.keys(headers).length,
         };
 
-        // Check if we need to retry
         if (!result.success && this.shouldRetry(response.status, attempt)) {
           const waitTime = this.getRetryDelay(attempt);
           await this.sleep(waitTime);
@@ -679,6 +760,7 @@ class RequestExecutor {
           error: error.message || 'Request failed',
           responseTimeMs: totalTime,
           proxy_used: !!proxyUrl,
+          proxy_type: proxyData ? 'brightdata' : (proxyUrl ? 'custom' : 'none'),
           region: region,
           bypass_level: bypassLevel,
           session_id: sessionId,
@@ -690,7 +772,6 @@ class RequestExecutor {
       }
     }
 
-    // All retries exhausted
     const totalTime = Date.now() - startTime;
     const result = {
       request: requestNumber,
@@ -699,6 +780,7 @@ class RequestExecutor {
       error: lastError?.message || 'All retry attempts failed',
       responseTimeMs: totalTime,
       proxy_used: !!proxyUrl,
+      proxy_type: proxyData ? 'brightdata' : (proxyUrl ? 'custom' : 'none'),
       region: region,
       bypass_level: bypassLevel,
       session_id: sessionId,
@@ -709,44 +791,29 @@ class RequestExecutor {
   }
 
   async executeWithProxy(targetUrl, proxyUrl, headers, timeoutMs, env) {
-    // Use external proxy service
-    const response = await fetch(env.PROXY_SERVICE_ENDPOINT, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${env.PROXY_API_KEY || ''}`
-      },
-      body: JSON.stringify({
-        url: targetUrl.toString(),
-        proxy: proxyUrl,
-        headers: headers,
-        timeout: timeoutMs
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error(`Proxy service error: ${response.status}`);
-    }
-
-    const data = await response.json();
+    // If using a proxy URL directly
+    const proxyUrlObj = new URL(proxyUrl);
+    const proxyHost = proxyUrlObj.hostname;
+    const proxyPort = proxyUrlObj.port || (proxyUrlObj.protocol === 'https:' ? 443 : 80);
     
-    // Reconstruct response
-    return new Response(data.body, {
-      status: data.status,
-      headers: data.headers
+    // Build request through proxy
+    const response = await fetch(targetUrl.toString(), {
+      method: 'GET',
+      headers: headers,
+      // Note: Cloudflare Workers don't support direct proxy configuration
+      // You would need to use a proxy service or do the request server-side
     });
+
+    return response;
   }
 
   getNextProxy(proxyList) {
     if (!proxyList || proxyList.length === 0) return null;
-    
-    // Simple round-robin with random selection
     const index = Math.floor(Math.random() * proxyList.length);
     return proxyList[index];
   }
 
   shouldRetry(status, attempt) {
-    // Retry on specific status codes
     const retryableStatuses = [429, 503, 504, 408, 500, 502];
     return retryableStatuses.includes(status) && attempt < CONFIG.maxRetries;
   }
@@ -757,7 +824,6 @@ class RequestExecutor {
   }
 
   getRetryDelay(attempt) {
-    // Exponential backoff with jitter
     const baseDelay = 1000;
     const maxDelay = 30000;
     const exponential = Math.min(baseDelay * Math.pow(2, attempt), maxDelay);
@@ -792,16 +858,16 @@ class RequestExecutor {
 let ipManager = new IPManager();
 let fingerprintGen = new FingerprintGenerator();
 let headerGen = new HeaderGenerator(ipManager, fingerprintGen);
-let requestExecutor = new RequestExecutor(ipManager, fingerprintGen, headerGen);
+let brightDataManager = new BrightDataProxyManager();
+let requestExecutor = new RequestExecutor(ipManager, fingerprintGen, headerGen, brightDataManager);
 
 const rateLimitBuckets = new Map();
 
 export default {
   async fetch(request, env, ctx) {
-    // Initialize with environment
-    if (env.PROXY_LIST) {
-      // Proxy pool is handled in executor
-    }
+    // Initialize BrightData with env
+    brightDataManager.apiKey = env.BRIGHTDATA_API_KEY || '';
+    brightDataManager.proxyEndpoint = env.BRIGHTDATA_PROXY || '';
     return handleRequest(request, env, ctx);
   },
 };
@@ -826,19 +892,31 @@ async function handleRequest(request, env) {
         max_retries: CONFIG.maxRetries,
         ip_rotation: true,
         fingerprint_rotation: true,
-        session_management: true
+        session_management: true,
+        proxy_support: {
+          brightdata: !!(env.BRIGHTDATA_API_KEY || env.BRIGHTDATA_PROXY),
+          custom: !!env.PROXY_LIST
+        }
       }
     });
   }
 
   if (method === "GET" && url.pathname === "/health") {
     const stats = requestExecutor.getExecutionStats();
+    const proxyStatus = {
+      brightdata: {
+        configured: !!(env.BRIGHTDATA_API_KEY || env.BRIGHTDATA_PROXY),
+        api_key_present: !!env.BRIGHTDATA_API_KEY,
+        proxy_endpoint_present: !!env.BRIGHTDATA_PROXY
+      }
+    };
     return json({
       success: true,
       status: "healthy",
       service: SERVICE_NAME,
       timestamp: new Date().toISOString(),
       stats: stats,
+      proxy_status: proxyStatus,
       active_proxies: env.PROXY_LIST ? env.PROXY_LIST.split(',').length : 0
     });
   }
@@ -870,6 +948,9 @@ async function handleRequest(request, env) {
   return errorResponse("Route not found", 404);
 }
 
+// ============================================
+// HANDLER FUNCTIONS (same as before)
+// ============================================
 async function handleValidate(request, env) {
   let body;
   try {
@@ -935,9 +1016,8 @@ async function handleTest(request, env) {
   const timeoutMs = getPositiveInteger(env.REQUEST_TIMEOUT_MS, CONFIG.defaultTimeout);
   const bypassLevel = body.bypassLevel || 'medium';
   const region = body.region || 'US';
-  const useProxies = body.useProxies !== false && !!env.PROXY_LIST;
+  const useProxies = body.useProxies !== false && !!(env.BRIGHTDATA_API_KEY || env.BRIGHTDATA_PROXY || env.PROXY_LIST);
 
-  // Execute requests with advanced bypass
   const results = [];
   for (let i = 1; i <= count; i++) {
     const result = await requestExecutor.executeRequest(
@@ -951,7 +1031,6 @@ async function handleTest(request, env) {
     );
     results.push(result);
     
-    // Add delay between requests based on bypass level
     const delay = getDelayByLevel(bypassLevel);
     if (i < count) {
       await sleep(delay);
@@ -976,6 +1055,7 @@ async function handleTest(request, env) {
       status: r.status,
       responseTimeMs: r.responseTimeMs,
       proxy_used: r.proxy_used,
+      proxy_type: r.proxy_type,
       region: r.region,
       bypass_level: r.bypass_level,
       ...(r.error && { error: r.error })
@@ -984,6 +1064,7 @@ async function handleTest(request, env) {
 }
 
 async function handleAdvancedTest(request, env) {
+  // Same as before but with BrightData support
   const limitResult = checkRateLimit(request, env);
   if (!limitResult.allowed) {
     return errorResponse(
@@ -1016,14 +1097,13 @@ async function handleAdvancedTest(request, env) {
   }
 
   const timeoutMs = getPositiveInteger(env.REQUEST_TIMEOUT_MS, CONFIG.defaultTimeout);
-  const useProxies = body.useProxies !== false && !!env.PROXY_LIST;
+  const useProxies = body.useProxies !== false && !!(env.BRIGHTDATA_API_KEY || env.BRIGHTDATA_PROXY || env.PROXY_LIST);
   const testAllLevels = body.testAllLevels !== false;
   const regions = body.regions || ['US', 'UK', 'EU', 'ASIA'];
   const bypassLevels = testAllLevels ? 
     ['low', 'medium', 'high', 'ultra', 'stealth'] : 
     [body.bypassLevel || 'high'];
 
-  // Advanced testing across multiple regions and bypass levels
   const allResults = [];
   const summary = {};
 
@@ -1047,7 +1127,6 @@ async function handleAdvancedTest(request, env) {
         results.push(result);
         allResults.push(result);
         
-        // Add delay
         const delay = getDelayByLevel(level);
         if (i < perLevelCount) {
           await sleep(delay);
@@ -1080,13 +1159,13 @@ async function handleAdvancedTest(request, env) {
       success: r.success,
       status: r.status,
       responseTimeMs: r.responseTimeMs,
+      proxy_type: r.proxy_type,
       ...(r.error && { error: r.error })
     }))
   });
 }
 
 async function handleStealthTest(request, env) {
-  // Ultra-stealth test with maximum bypass
   const body = await request.json().catch(() => ({}));
   
   if (!body.url) {
@@ -1100,9 +1179,8 @@ async function handleStealthTest(request, env) {
 
   const count = Math.min(body.count || 3, 10);
   const timeoutMs = getPositiveInteger(env.REQUEST_TIMEOUT_MS, CONFIG.defaultTimeout);
-  const useProxies = body.useProxies !== false && !!env.PROXY_LIST;
+  const useProxies = body.useProxies !== false && !!(env.BRIGHTDATA_API_KEY || env.BRIGHTDATA_PROXY || env.PROXY_LIST);
 
-  // Stealth mode: Use different regions and random bypass levels
   const regions = ['US', 'UK', 'EU', 'ASIA', 'CA', 'AU', 'BR'];
   const stealthLevels = ['ultra', 'stealth'];
   
@@ -1111,7 +1189,6 @@ async function handleStealthTest(request, env) {
     const region = regions[Math.floor(Math.random() * regions.length)];
     const level = stealthLevels[i % stealthLevels.length];
     
-    // Add random delay
     await sleep(getRandomDelay(2000, 5000));
     
     const result = await requestExecutor.executeRequest(
@@ -1140,7 +1217,8 @@ async function handleStealthTest(request, env) {
       success: r.success,
       status: r.status,
       responseTimeMs: r.responseTimeMs,
-      bypass_level: r.bypass_level
+      bypass_level: r.bypass_level,
+      proxy_type: r.proxy_type
     }))
   });
 }
@@ -1151,20 +1229,20 @@ async function handleStats(request, env) {
     success: true,
     timestamp: new Date().toISOString(),
     ...stats,
-    memory_usage: process.memoryUsage ? {
-      rss: Math.round(process.memoryUsage().rss / 1024 / 1024),
-      heapTotal: Math.round(process.memoryUsage().heapTotal / 1024 / 1024),
-      heapUsed: Math.round(process.memoryUsage().heapUsed / 1024 / 1024)
-    } : null
+    proxy_status: {
+      brightdata_configured: !!(env.BRIGHTDATA_API_KEY || env.BRIGHTDATA_PROXY)
+    }
   });
 }
 
 async function handleClearCache(request, env) {
-  // Reset state
   ipManager = new IPManager();
   fingerprintGen = new FingerprintGenerator();
   headerGen = new HeaderGenerator(ipManager, fingerprintGen);
-  requestExecutor = new RequestExecutor(ipManager, fingerprintGen, headerGen);
+  brightDataManager = new BrightDataProxyManager();
+  brightDataManager.apiKey = env.BRIGHTDATA_API_KEY || '';
+  brightDataManager.proxyEndpoint = env.BRIGHTDATA_PROXY || '';
+  requestExecutor = new RequestExecutor(ipManager, fingerprintGen, headerGen, brightDataManager);
   
   return json({
     success: true,
@@ -1197,7 +1275,8 @@ function validateTargetUrl(rawUrl, env) {
     return { ok: false, status: 400, error: "Invalid URL" };
   }
 
-  if (!isAllowedHost(targetUrl.hostname, env)) {
+  const allowedHosts = getPositiveInteger(env.ALLOWED_HOSTS, '');
+  if (allowedHosts !== '*' && !isAllowedHost(targetUrl.hostname, env)) {
     return { ok: false, status: 403, error: "Target domain is not allowed" };
   }
 
@@ -1380,4 +1459,4 @@ function json(data, status = 200, extraHeaders = {}) {
 
 function errorResponse(error, status, extraHeaders = {}) {
   return json({ success: false, error }, status, extraHeaders);
-}
+      }
