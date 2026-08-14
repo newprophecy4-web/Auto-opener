@@ -3,7 +3,7 @@ main = "src/index.js"
 compatibility_date = "2024-12-18"
 
 [vars]
-ALLOWED_HOSTS = "https://auto-opener.newprophecy4.workers.dev/"
+ALLOWED_HOSTS = "example.com"
 MAX_TEST_COUNT = "500"
 REQUEST_TIMEOUT_MS = "15000"
 RATE_LIMIT_PER_MINUTE = "35"
