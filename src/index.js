@@ -1,9 +1,9 @@
 // ============================================
-// MULTI-TIME LINK OPENER - v4.0.2 (BRIGHT DATA REAL PROXY)
+// MULTI-TIME LINK OPENER - v4.0.3 (REAL PROXY ONLY)
 // ============================================
 
 const SERVICE_NAME = "Multi Time Link Opener - Advanced Bypass";
-const VERSION = "4.0.2";
+const VERSION = "4.0.3";
 
 // ----- Configuration -----
 const CONFIG = {
@@ -50,13 +50,14 @@ const CONFIG = {
 };
 
 // ============================================
-// IP MANAGER (ONLY FOR SPOOFED HEADERS)
+// IP MANAGER - FOR SPOOFED HEADERS ONLY (NOT EXIT IP)
 // ============================================
 class IPManager {
   constructor() {
     this.usedIPs = new Set();
   }
 
+  // These are used ONLY for X-Forwarded-For headers (spoofing), NEVER as exit IP.
   generateIP(region = 'US', seed = 0) {
     const regions = {
       'US': this.getUSIP,
@@ -76,9 +77,6 @@ class IPManager {
     return generator.call(this, seed);
   }
 
-  // ... (সকল getXXXIP পদ্ধতি পূর্বের মতোই, এখানে পূর্ণতা দিচ্ছি না)
-  // তবে কোডে এগুলি থাকবে
-
   getUSIP(seed) {
     const prefixes = ['12','23','34','45','56','67','68','69','70','71','72','73','74','75','76','77','78','79','80','81','82','83','84','85','86','87','88','89','90','91','92','93','94','95','96','97','98','99'];
     const prefix = prefixes[seed % prefixes.length];
@@ -88,8 +86,15 @@ class IPManager {
     return `${prefix}.${second}.${third}.${fourth}`;
   }
 
-  // ... অন্যান্য পদ্ধতি
-  getUKIP(seed) { /* ... */ }
+  getUKIP(seed) {
+    const prefixes = ['2','3','4','5','8','9','10','11','12','13','14','15','16','17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','33','34','35','36','37','38','39','40','41','42','43','44','45','46','47','48','49','50','51','52','53','54','55','56','57','58','59','60','61','62','63','64','65','66','67','68','69','70','71','72','73','74','75','76','77','78','79','80','81','82','83','84','85','86','87','88','89','90','91','92','93','94','95','96','97','98','99','100','101','102','103','104','105','106','107','108','109','110','111','112','113','114','115','116','117','118','119','120','121','122','123','124','125','126','127','128','129','130','131','132','133','134','135','136','137','138','139','140','141','142','143','144','145','146','147','148','149','150','151','152','153','154','155','156','157','158','159','160','161','162','163','164','165','166','167','168','169','170','171','172','173','174','175','176','177','178','179','180','181','182','183','184','185','186','187','188','189','190'];
+    const prefix = prefixes[seed % prefixes.length];
+    const second = this.randomRange(1,254);
+    const third = this.randomRange(1,254);
+    const fourth = this.randomRange(1,254);
+    return `${prefix}.${second}.${third}.${fourth}`;
+  }
+
   getEUIP(seed) { return this.getUKIP(seed); }
   getAsiaIP(seed) { return this.getUSIP(seed); }
   getCAIP(seed) { return this.getUSIP(seed); }
@@ -146,7 +151,7 @@ class FingerprintGenerator {
 }
 
 // ============================================
-// HEADER GENERATOR
+// HEADER GENERATOR - ONLY SPOOFED HEADERS, NEVER EXIT IP
 // ============================================
 class HeaderGenerator {
   constructor(ipManager, fingerprintGen) {
@@ -166,7 +171,8 @@ class HeaderGenerator {
 
   generateHeaders(region, requestNumber, bypassLevel) {
     const fingerprint = this.fingerprintGen.getFingerprint(requestNumber);
-    const clientIP = this.ipManager.getNextIP(region, requestNumber);
+    const spoofedIP = this.ipManager.getNextIP(region, requestNumber); // ONLY for spoofing
+
     const headers = {
       'User-Agent': fingerprint.userAgent,
       'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
@@ -180,13 +186,14 @@ class HeaderGenerator {
       'Sec-Fetch-Mode': 'navigate',
       'Sec-Fetch-Site': 'none',
       'Sec-Fetch-User': '?1',
-      'X-Forwarded-For': clientIP,
-      'X-Real-IP': clientIP,
-      'X-Originating-IP': clientIP,
-      'X-Remote-IP': clientIP,
-      'X-Client-IP': clientIP,
-      'CF-Connecting-IP': clientIP,
-      'True-Client-IP': clientIP,
+      // Spoofed headers (NEVER used as exit IP)
+      'X-Forwarded-For': spoofedIP,
+      'X-Real-IP': spoofedIP,
+      'X-Originating-IP': spoofedIP,
+      'X-Remote-IP': spoofedIP,
+      'X-Client-IP': spoofedIP,
+      'CF-Connecting-IP': spoofedIP,
+      'True-Client-IP': spoofedIP,
       'X-Geo-Region': region,
       'CF-Geo-Region': region,
       'X-Geo-Country': this.getCountryCode(region),
@@ -197,7 +204,7 @@ class HeaderGenerator {
       'Sec-Ch-Ua-Platform': `"${fingerprint.platform}"`,
       'Sec-Ch-Ua-Mobile': '?0'
     };
-    // Bypass level extras
+
     if (bypassLevel === 'high' || bypassLevel === 'ultra' || bypassLevel === 'stealth') {
       headers['X-Request-ID'] = this.generateRequestId();
       headers['Cookie'] = this.generateCookies(requestNumber);
@@ -274,7 +281,7 @@ class HeaderGenerator {
 }
 
 // ============================================
-// REQUEST EXECUTOR (REAL PROXY SUPPORT)
+// REQUEST EXECUTOR - REAL REQUESTS ONLY
 // ============================================
 class RequestExecutor {
   constructor(ipManager, fingerprintGen, headerGen) {
@@ -282,150 +289,6 @@ class RequestExecutor {
     this.fingerprintGen = fingerprintGen;
     this.headerGen = headerGen;
     this.executionHistory = [];
-  }
-
-  /**
-   * Execute a real HTTP request, optionally through Bright Data proxy.
-   * Returns a result object with success, status, responseTime, proxy info, etc.
-   */
-  async executeRequest(targetUrl, region, requestNumber, timeoutMs, bypassLevel, useProxy, env) {
-    const start = Date.now();
-    const headers = this.headerGen.generateHeaders(region, requestNumber, bypassLevel);
-
-    // Determine proxy configuration
-    let proxyConfig = null;
-    if (useProxy) {
-      const brightData = this.getBrightDataConfig(env);
-      if (brightData) {
-        if (env.PROXY_SERVICE_ENDPOINT) {
-          proxyConfig = {
-            type: 'brightdata',
-            serviceEndpoint: env.PROXY_SERVICE_ENDPOINT,
-            ...brightData
-          };
-        } else {
-          // Cloudflare Worker cannot directly use HTTP proxies, so we need a service endpoint.
-          return this.createErrorResult(requestNumber, region, bypassLevel, start,
-            'PROXY_UNSUPPORTED',
-            'Bright Data proxy is not supported directly. Please set PROXY_SERVICE_ENDPOINT.'
-          );
-        }
-      } else {
-        return this.createErrorResult(requestNumber, region, bypassLevel, start,
-          'PROXY_CREDENTIALS_MISSING',
-          'Bright Data credentials are not configured on the backend environment.'
-        );
-      }
-    }
-
-    // Execute the request
-    try {
-      let response;
-      if (proxyConfig && proxyConfig.type === 'brightdata') {
-        // Use proxy service endpoint
-        const proxyBody = {
-          url: targetUrl.toString(),
-          proxy: {
-            host: proxyConfig.host,
-            port: proxyConfig.port,
-            username: proxyConfig.username,
-            password: proxyConfig.password
-          },
-          headers: headers,
-          timeout: timeoutMs,
-          method: 'GET',
-          redirect: 'manual'
-        };
-
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), timeoutMs + 2000); // extra time for proxy service
-
-        const proxyResponse = await fetch(proxyConfig.serviceEndpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(proxyBody),
-          signal: controller.signal
-        });
-
-        clearTimeout(timer);
-
-        if (!proxyResponse.ok) {
-          const errorText = await proxyResponse.text().catch(() => 'Unknown error');
-          return this.createErrorResult(requestNumber, region, bypassLevel, start,
-            'PROXY_CONNECTION_FAILED',
-            `Proxy service returned ${proxyResponse.status}: ${errorText}`
-          );
-        }
-
-        const data = await proxyResponse.json();
-        // Expect { status, body, headers, ... } from proxy service
-        if (data.status === undefined) {
-          return this.createErrorResult(requestNumber, region, bypassLevel, start,
-            'PROXY_INVALID_RESPONSE',
-            'Proxy service response did not contain status.'
-          );
-        }
-
-        const elapsed = Date.now() - start;
-        const success = data.status >= 200 && data.status < 400;
-        const result = {
-          request: requestNumber,
-          success: success,
-          status: data.status,
-          responseTimeMs: elapsed,
-          region: region,
-          bypass_level: bypassLevel,
-          proxy_used: true,
-          proxy_provider: 'Bright Data',
-          exit_ip: data.exit_ip || 'Unverified',
-          ip_used: headers['X-Forwarded-For'],
-          error: success ? null : `HTTP ${data.status}`
-        };
-        this.executionHistory.push(result);
-        return result;
-      } else {
-        // Direct request (no proxy)
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), timeoutMs);
-
-        response = await fetch(targetUrl.toString(), {
-          method: 'GET',
-          redirect: 'manual',
-          signal: controller.signal,
-          headers: headers
-        });
-
-        clearTimeout(timer);
-        const elapsed = Date.now() - start;
-        const success = response.status >= 200 && response.status < 400;
-        const result = {
-          request: requestNumber,
-          success: success,
-          status: response.status,
-          responseTimeMs: elapsed,
-          region: region,
-          bypass_level: bypassLevel,
-          proxy_used: false,
-          proxy_provider: null,
-          exit_ip: null,
-          ip_used: headers['X-Forwarded-For'],
-          error: success ? null : `HTTP ${response.status}`
-        };
-        this.executionHistory.push(result);
-        return result;
-      }
-    } catch (error) {
-      clearTimeout(); // not needed
-      const elapsed = Date.now() - start;
-      const timedOut = error?.name === 'AbortError' || error?.message?.includes('aborted');
-      const errorCode = timedOut ? 'REQUEST_TIMEOUT' : 'REQUEST_FAILED';
-      const errorMsg = timedOut ? 'Request timed out' : `Request failed: ${error.message}`;
-      return this.createErrorResult(requestNumber, region, bypassLevel, start,
-        errorCode, errorMsg, true
-      );
-    }
   }
 
   /**
@@ -443,18 +306,226 @@ class RequestExecutor {
     return { host, port, username, password };
   }
 
-  createErrorResult(requestNumber, region, bypassLevel, startTime, code, message, isRequestError = false) {
+  /**
+   * Execute a real HTTP request.
+   * If useProxy is true, attempts to use Bright Data via PROXY_SERVICE_ENDPOINT.
+   * If proxy fails, the request fails (no silent fallback).
+   */
+  async executeRequest(targetUrl, region, requestNumber, timeoutMs, bypassLevel, useProxy, env) {
+    const startTime = Date.now();
+    const headers = this.headerGen.generateHeaders(region, requestNumber, bypassLevel);
+
+    // If proxy mode is enabled, validate configuration
+    if (useProxy) {
+      const brightData = this.getBrightDataConfig(env);
+      if (!brightData) {
+        return this.createFailedResult(
+          requestNumber, region, bypassLevel, startTime,
+          'PROXY_CREDENTIALS_MISSING',
+          'Bright Data credentials are not configured on the backend environment.',
+          null, null, false, 'UNVERIFIED'
+        );
+      }
+
+      // Cloudflare Worker cannot directly connect to Bright Data proxy.
+      // We need an external PROXY_SERVICE_ENDPOINT.
+      if (!env.PROXY_SERVICE_ENDPOINT) {
+        return this.createFailedResult(
+          requestNumber, region, bypassLevel, startTime,
+          'PROXY_UNSUPPORTED',
+          'PROXY_SERVICE_ENDPOINT is required. Cloudflare Worker cannot directly use HTTP proxies.',
+          null, null, false, 'UNVERIFIED'
+        );
+      }
+
+      // Attempt real proxy request via the service endpoint
+      return this.executeProxyRequest(
+        targetUrl, region, requestNumber, timeoutMs, bypassLevel,
+        brightData, headers, startTime, env
+      );
+    } else {
+      // Direct request (no proxy) – explicitly allowed
+      return this.executeDirectRequest(
+        targetUrl, region, requestNumber, timeoutMs, bypassLevel,
+        headers, startTime
+      );
+    }
+  }
+
+  /**
+   * Execute request via Bright Data proxy service endpoint.
+   * This is the ONLY way Cloudflare Worker can use a proxy.
+   */
+  async executeProxyRequest(targetUrl, region, requestNumber, timeoutMs, bypassLevel, brightData, headers, startTime, env) {
+    const proxyBody = {
+      url: targetUrl.toString(),
+      proxy: {
+        host: brightData.host,
+        port: parseInt(brightData.port, 10),
+        username: brightData.username,
+        password: brightData.password
+      },
+      headers: headers,
+      timeout: timeoutMs,
+      method: 'GET',
+      redirect: 'manual'
+    };
+
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs + 2000);
+
+      const response = await fetch(env.PROXY_SERVICE_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(proxyBody),
+        signal: controller.signal
+      });
+
+      clearTimeout(timer);
+      const elapsed = Date.now() - startTime;
+
+      if (!response.ok) {
+        let errorText = `Proxy service returned ${response.status}`;
+        try {
+          const errorData = await response.json();
+          if (errorData.message) errorText = errorData.message;
+        } catch {
+          try {
+            errorText = await response.text();
+          } catch {}
+        }
+        return this.createFailedResult(
+          requestNumber, region, bypassLevel, startTime,
+          'PROXY_CONNECTION_FAILED',
+          `Proxy service error: ${errorText}`,
+          null, null, false, 'UNVERIFIED'
+        );
+      }
+
+      const data = await response.json();
+
+      // Validate response from proxy service
+      if (data.status === undefined) {
+        return this.createFailedResult(
+          requestNumber, region, bypassLevel, startTime,
+          'PROXY_INVALID_RESPONSE',
+          'Proxy service returned invalid response (missing status).',
+          null, null, false, 'UNVERIFIED'
+        );
+      }
+
+      const success = data.status >= 200 && data.status < 400;
+      const exitIP = data.exit_ip || null;
+      const exitIPStatus = data.exit_ip ? 'VERIFIED' : 'UNVERIFIED';
+
+      const result = {
+        request: requestNumber,
+        success: success,
+        status: data.status,
+        responseTimeMs: elapsed,
+        region: region,
+        bypass_level: bypassLevel,
+        proxy_used: true,
+        proxy_provider: 'Bright Data',
+        proxy_status: 'CONNECTED',
+        exit_ip: exitIP,
+        exit_ip_status: exitIPStatus,
+        ip_used: headers['X-Forwarded-For'] || null,
+        error: success ? null : {
+          code: 'TARGET_RESPONDED_WITH_ERROR',
+          message: `HTTP ${data.status}`
+        }
+      };
+
+      this.executionHistory.push(result);
+      return result;
+
+    } catch (error) {
+      const elapsed = Date.now() - startTime;
+      const timedOut = error?.name === 'AbortError' || error?.message?.includes('aborted');
+      const errorCode = timedOut ? 'PROXY_TIMEOUT' : 'PROXY_CONNECTION_FAILED';
+      const errorMsg = timedOut ? 'Proxy connection timed out' : `Proxy connection failed: ${error.message}`;
+
+      return this.createFailedResult(
+        requestNumber, region, bypassLevel, startTime,
+        errorCode, errorMsg,
+        null, null, false, 'UNVERIFIED'
+      );
+    }
+  }
+
+  /**
+   * Execute direct request (no proxy).
+   */
+  async executeDirectRequest(targetUrl, region, requestNumber, timeoutMs, bypassLevel, headers, startTime) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+      const response = await fetch(targetUrl.toString(), {
+        method: 'GET',
+        redirect: 'manual',
+        signal: controller.signal,
+        headers: headers
+      });
+
+      clearTimeout(timer);
+      const elapsed = Date.now() - startTime;
+      const success = response.status >= 200 && response.status < 400;
+
+      const result = {
+        request: requestNumber,
+        success: success,
+        status: response.status,
+        responseTimeMs: elapsed,
+        region: region,
+        bypass_level: bypassLevel,
+        proxy_used: false,
+        proxy_provider: null,
+        proxy_status: null,
+        exit_ip: null,
+        exit_ip_status: 'UNVERIFIED',
+        ip_used: headers['X-Forwarded-For'] || null,
+        error: success ? null : {
+          code: 'TARGET_RESPONDED_WITH_ERROR',
+          message: `HTTP ${response.status}`
+        }
+      };
+
+      this.executionHistory.push(result);
+      return result;
+
+    } catch (error) {
+      const elapsed = Date.now() - startTime;
+      const timedOut = error?.name === 'AbortError' || error?.message?.includes('aborted');
+      const errorCode = timedOut ? 'REQUEST_TIMEOUT' : 'REQUEST_FAILED';
+      const errorMsg = timedOut ? 'Request timed out' : `Request failed: ${error.message}`;
+
+      return this.createFailedResult(
+        requestNumber, region, bypassLevel, startTime,
+        errorCode, errorMsg,
+        null, null, false, 'UNVERIFIED'
+      );
+    }
+  }
+
+  createFailedResult(requestNumber, region, bypassLevel, startTime, code, message, status = null, exitIP = null, proxyUsed = false, exitIPStatus = 'UNVERIFIED') {
     const elapsed = Date.now() - startTime;
     const result = {
       request: requestNumber,
       success: false,
-      status: null,
+      status: status,
       responseTimeMs: elapsed,
       region: region,
       bypass_level: bypassLevel,
-      proxy_used: false,
-      proxy_provider: null,
-      exit_ip: null,
+      proxy_used: proxyUsed,
+      proxy_provider: proxyUsed ? 'Bright Data' : null,
+      proxy_status: proxyUsed ? 'FAILED' : null,
+      exit_ip: exitIP,
+      exit_ip_status: exitIPStatus,
       ip_used: null,
       error: {
         code: code,
@@ -467,11 +538,19 @@ class RequestExecutor {
 
   getExecutionStats() {
     const total = this.executionHistory.length;
-    if (total === 0) return { successRate: 0, avgResponseTime: 0, totalRequests: 0, successfulRequests: 0, failedRequests: 0 };
+    if (total === 0) {
+      return {
+        successRate: 0,
+        avgResponseTime: 0,
+        totalRequests: 0,
+        successfulRequests: 0,
+        failedRequests: 0
+      };
+    }
     const successful = this.executionHistory.filter(r => r.success).length;
-    const avg = this.executionHistory.reduce((sum,r) => sum + r.responseTimeMs, 0) / total;
+    const avg = this.executionHistory.reduce((sum, r) => sum + r.responseTimeMs, 0) / total;
     return {
-      successRate: (successful/total)*100,
+      successRate: (successful / total) * 100,
       avgResponseTime: Math.round(avg),
       totalRequests: total,
       successfulRequests: successful,
@@ -518,20 +597,32 @@ function isSuspiciousHostname(hostname) {
   if (suspicious.has(host) || host.endsWith('.localhost') || host.endsWith('.local')) return true;
   if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) {
     const octets = host.split('.').map(Number);
-    if (octets.some(o => o<0 || o>255)) return true;
-    const [a,b] = octets;
-    if (a===0 || a===10 || a===127 || (a===169 && b===254) || (a===172 && b>=16 && b<=31) || (a===192 && b===168)) return true;
+    if (octets.some(o => o < 0 || o > 255)) return true;
+    const [a, b] = octets;
+    if (a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)) return true;
   }
   return host.includes(':');
 }
 
 function validateTargetUrl(rawUrl, env) {
   let targetUrl;
-  try { targetUrl = new URL(rawUrl.trim()); } catch { return { ok: false, status: 400, code: 'INVALID_URL', error: 'Invalid URL format' }; }
-  if (!/^https?:$/.test(targetUrl.protocol)) return { ok: false, status: 400, code: 'UNSUPPORTED_PROTOCOL', error: 'Only HTTP/HTTPS allowed' };
-  if (targetUrl.username || targetUrl.password) return { ok: false, status: 400, code: 'CREDENTIALS_NOT_ALLOWED', error: 'URL credentials not allowed' };
-  if (!targetUrl.hostname || isSuspiciousHostname(targetUrl.hostname)) return { ok: false, status: 400, code: 'INVALID_HOST', error: 'Invalid or suspicious hostname' };
-  if (!isAllowedHost(targetUrl.hostname, env)) return { ok: false, status: 403, code: 'HOST_NOT_ALLOWED', error: 'Target domain is not in ALLOWED_HOSTS' };
+  try {
+    targetUrl = new URL(rawUrl.trim());
+  } catch {
+    return { ok: false, status: 400, code: 'INVALID_URL', error: 'Invalid URL format' };
+  }
+  if (!/^https?:$/.test(targetUrl.protocol)) {
+    return { ok: false, status: 400, code: 'UNSUPPORTED_PROTOCOL', error: 'Only HTTP/HTTPS allowed' };
+  }
+  if (targetUrl.username || targetUrl.password) {
+    return { ok: false, status: 400, code: 'CREDENTIALS_NOT_ALLOWED', error: 'URL credentials not allowed' };
+  }
+  if (!targetUrl.hostname || isSuspiciousHostname(targetUrl.hostname)) {
+    return { ok: false, status: 400, code: 'INVALID_HOST', error: 'Invalid or suspicious hostname' };
+  }
+  if (!isAllowedHost(targetUrl.hostname, env)) {
+    return { ok: false, status: 403, code: 'HOST_NOT_ALLOWED', error: 'Target domain is not in ALLOWED_HOSTS' };
+  }
   return { ok: true, url: targetUrl };
 }
 
@@ -546,7 +637,10 @@ function checkRateLimit(request, env) {
     return { allowed: true, retryAfterSeconds: 0 };
   }
   if (bucket.count >= limit) {
-    return { allowed: false, retryAfterSeconds: Math.max(1, Math.ceil((bucket.windowStartedAt + windowMs - now)/1000)) };
+    return {
+      allowed: false,
+      retryAfterSeconds: Math.max(1, Math.ceil((bucket.windowStartedAt + windowMs - now) / 1000))
+    };
   }
   bucket.count++;
   return { allowed: true, retryAfterSeconds: 0 };
@@ -582,7 +676,7 @@ function errorResponse(code, message, status = 400, extra = {}) {
 // ROUTE HANDLERS
 // ============================================
 
-// /validate - only validates, does NOT execute
+// /validate - ONLY validation, no execution
 async function handleValidate(request, env) {
   let body;
   try {
@@ -620,11 +714,17 @@ async function handleValidate(request, env) {
 async function handleTest(request, env) {
   const limit = checkRateLimit(request, env);
   if (!limit.allowed) {
-    return errorResponse('RATE_LIMITED', 'Too many requests', 429, { 'Retry-After': String(limit.retryAfterSeconds) });
+    return errorResponse('RATE_LIMITED', 'Too many requests', 429, {
+      'Retry-After': String(limit.retryAfterSeconds)
+    });
   }
 
   let body;
-  try { body = await request.json(); } catch { return errorResponse('INVALID_JSON', 'Invalid JSON body', 400); }
+  try {
+    body = await request.json();
+  } catch {
+    return errorResponse('INVALID_JSON', 'Invalid JSON body', 400);
+  }
   if (!body || typeof body.url !== 'string' || !body.url.trim()) {
     return errorResponse('MISSING_URL', 'url is required', 400);
   }
@@ -642,16 +742,21 @@ async function handleTest(request, env) {
 
   const maxCount = getPositiveInteger(env.MAX_TEST_COUNT, CONFIG.maxTestCount);
   const count = body.count === undefined ? 1 : body.count;
-  if (!Number.isInteger(count) || count < 1) return errorResponse('INVALID_COUNT', 'Count must be at least 1', 400);
-  if (count > maxCount) return errorResponse('COUNT_EXCEEDED', `Count must not exceed ${maxCount}`, 400);
+  if (!Number.isInteger(count) || count < 1) {
+    return errorResponse('INVALID_COUNT', 'Count must be at least 1', 400);
+  }
+  if (count > maxCount) {
+    return errorResponse('COUNT_EXCEEDED', `Count must not exceed ${maxCount}`, 400);
+  }
 
   const timeoutMs = getPositiveInteger(env.REQUEST_TIMEOUT_MS, CONFIG.defaultTimeout);
   const bypassLevel = body.bypassLevel || 'medium';
   const region = body.region || 'US';
-  const useProxy = body.useProxies !== false; // default true if not specified
+  // useProxies defaults to true if not specified
+  const useProxy = body.useProxies !== false;
 
   const results = [];
-  for (let i=1; i<=count; i++) {
+  for (let i = 1; i <= count; i++) {
     const result = await requestExecutor.executeRequest(
       validation.url,
       region,
@@ -674,9 +779,9 @@ async function handleTest(request, env) {
     target: validation.url.hostname,
     total: count,
     completed: results.length,
-    region,
+    region: region,
     bypass_level: bypassLevel,
-    proxy_used: useProxy,
+    proxy_mode: useProxy ? 'enabled' : 'disabled',
     ...stats,
     results: results.map(r => ({
       request: r.request,
@@ -687,9 +792,11 @@ async function handleTest(request, env) {
       bypass_level: r.bypass_level,
       proxy_used: r.proxy_used,
       proxy_provider: r.proxy_provider,
+      proxy_status: r.proxy_status,
       exit_ip: r.exit_ip,
+      exit_ip_status: r.exit_ip_status,
       ip_used: r.ip_used,
-      ...(r.error && { error: r.error })
+      error: r.error
     }))
   });
 }
@@ -699,14 +806,21 @@ function calculateStatistics(results) {
   const failed = results.length - successful;
   const times = results.map(r => r.responseTimeMs).filter(Number.isFinite);
   if (times.length === 0) {
-    return { successful, failed, successRate: 0, averageResponseTimeMs: 0, minResponseTimeMs: 0, maxResponseTimeMs: 0 };
+    return {
+      successful,
+      failed,
+      successRate: 0,
+      averageResponseTimeMs: 0,
+      minResponseTimeMs: 0,
+      maxResponseTimeMs: 0
+    };
   }
-  const total = times.reduce((a,b) => a+b, 0);
+  const total = times.reduce((a, b) => a + b, 0);
   return {
     successful,
     failed,
-    successRate: Number(((successful/results.length)*100).toFixed(2)),
-    averageResponseTimeMs: Math.round(total/times.length),
+    successRate: Number(((successful / results.length) * 100).toFixed(2)),
+    averageResponseTimeMs: Math.round(total / times.length),
     minResponseTimeMs: Math.min(...times),
     maxResponseTimeMs: Math.max(...times)
   };
@@ -717,17 +831,21 @@ function getDelayByLevel(level) {
   return map[level] || 300;
 }
 
-// /test-advanced and /test-stealth reuse the same logic
-async function handleAdvancedTest(request, env) { return handleTest(request, env); }
+async function handleAdvancedTest(request, env) {
+  return handleTest(request, env);
+}
+
 async function handleStealthTest(request, env) {
   const body = await request.json().catch(() => ({}));
   body.bypassLevel = 'stealth';
-  const newReq = new Request(request, { body: JSON.stringify(body) });
+  const newReq = new Request(request, {
+    body: JSON.stringify(body)
+  });
   return handleTest(newReq, env);
 }
 
 // ============================================
-// /proxy-status - safe proxy info
+// /proxy-status - safe, honest proxy info
 // ============================================
 async function handleProxyStatus(env) {
   const brightData = requestExecutor.getBrightDataConfig(env);
@@ -739,7 +857,8 @@ async function handleProxyStatus(env) {
       success: false,
       configured: false,
       provider: 'Bright Data',
-      status: 'DISCONNECTED',
+      credentials_configured: false,
+      proxy_status: 'DISCONNECTED',
       error: {
         code: 'PROXY_CREDENTIALS_MISSING'
       }
@@ -751,19 +870,24 @@ async function handleProxyStatus(env) {
       success: false,
       configured: true,
       provider: 'Bright Data',
-      status: 'UNSUPPORTED',
+      credentials_configured: true,
+      proxy_status: 'UNSUPPORTED',
       error: {
         code: 'PROXY_UNSUPPORTED',
-        message: 'PROXY_SERVICE_ENDPOINT is not configured. Cloudflare Worker cannot directly use HTTP proxies.'
+        message: 'PROXY_SERVICE_ENDPOINT is required. Cloudflare Worker cannot directly use HTTP proxies.'
       }
     });
   }
 
+  // Credentials exist and service endpoint is configured.
+  // We cannot verify actual connectivity without making a test request.
   return json({
     success: true,
     configured: true,
     provider: 'Bright Data',
-    status: 'READY'
+    credentials_configured: true,
+    proxy_status: 'UNKNOWN',
+    message: 'Proxy configuration exists. Actual connectivity requires a test request.'
   });
 }
 
@@ -792,13 +916,17 @@ async function handleRequest(request, env) {
       },
       features: {
         bypass_levels: Object.keys(CONFIG.bypassLevels),
-        regions: ['US','UK','EU','ASIA','CA','AU','BR','IN','JP','CN','RU','ZA']
+        regions: ['US', 'UK', 'EU', 'ASIA', 'CA', 'AU', 'BR', 'IN', 'JP', 'CN', 'RU', 'ZA']
       }
     });
   }
 
   if (method === 'GET' && path === '/health') {
     const stats = requestExecutor.getExecutionStats();
+    const brightData = requestExecutor.getBrightDataConfig(env);
+    const hasCredentials = brightData !== null;
+    const hasServiceEndpoint = !!env.PROXY_SERVICE_ENDPOINT;
+
     return json({
       success: true,
       status: 'healthy',
@@ -810,16 +938,22 @@ async function handleRequest(request, env) {
         avgResponseTime: stats.avgResponseTime || 0,
         totalRequests: stats.totalRequests || 0
       },
-      proxy_status: {
-        brightdata_configured: requestExecutor.getBrightDataConfig(env) !== null,
-        proxy_service_ready: !!env.PROXY_SERVICE_ENDPOINT
+      proxy: {
+        provider: 'Bright Data',
+        credentials_configured: hasCredentials,
+        service_endpoint_configured: hasServiceEndpoint,
+        connection_status: hasCredentials && hasServiceEndpoint ? 'UNKNOWN' : (hasCredentials ? 'UNSUPPORTED' : 'DISCONNECTED')
       }
     });
   }
 
   if (method === 'GET' && path === '/stats') {
     const stats = requestExecutor.getExecutionStats();
-    return json({ success: true, timestamp: new Date().toISOString(), stats });
+    return json({
+      success: true,
+      timestamp: new Date().toISOString(),
+      stats
+    });
   }
 
   if (method === 'GET' && path === '/analytics') {
@@ -829,34 +963,52 @@ async function handleRequest(request, env) {
       timestamp: new Date().toISOString(),
       summary: stats,
       recent_requests: requestExecutor.executionHistory.slice(-20).map(r => ({
+        request: r.request,
         success: r.success,
         status: r.status,
         responseTimeMs: r.responseTimeMs,
         region: r.region,
         bypass_level: r.bypass_level,
         proxy_used: r.proxy_used,
-        exit_ip: r.exit_ip
+        proxy_status: r.proxy_status,
+        exit_ip: r.exit_ip,
+        exit_ip_status: r.exit_ip_status,
+        error: r.error
       }))
     });
   }
 
   if (method === 'GET' && path === '/analytics/summary') {
     const stats = requestExecutor.getExecutionStats();
-    return json({ success: true, timestamp: new Date().toISOString(), ...stats });
+    return json({
+      success: true,
+      timestamp: new Date().toISOString(),
+      ...stats
+    });
   }
 
   if (method === 'GET' && path === '/analytics/detailed') {
     const history = requestExecutor.executionHistory;
+    const times = history.map(r => r.responseTimeMs).filter(Number.isFinite);
+    const sorted = [...times].sort((a, b) => a - b);
+    const p95Idx = Math.floor(sorted.length * 0.95);
+    const p99Idx = Math.floor(sorted.length * 0.99);
+
     return json({
       success: true,
       timestamp: new Date().toISOString(),
       data_points: history.length,
       detailed_metrics: {
         response_times: {
-          average: Math.round(history.reduce((a,b) => a + b.responseTimeMs, 0) / (history.length || 1)),
-          median: 0,
-          p95: 0
-        }
+          average: times.length ? Math.round(times.reduce((a, b) => a + b, 0) / times.length) : 0,
+          median: sorted.length ? sorted[Math.floor(sorted.length / 2)] : 0,
+          p95: sorted.length ? sorted[Math.min(p95Idx, sorted.length - 1)] : 0,
+          p99: sorted.length ? sorted[Math.min(p99Idx, sorted.length - 1)] : 0,
+          min: sorted.length ? sorted[0] : 0,
+          max: sorted.length ? sorted[sorted.length - 1] : 0
+        },
+        success_rate: history.length ? ((history.filter(r => r.success).length / history.length) * 100) : 0,
+        proxy_usage: history.length ? ((history.filter(r => r.proxy_used).length / history.length) * 100) : 0
       }
     });
   }
@@ -871,14 +1023,21 @@ async function handleRequest(request, env) {
   if (method === 'POST' && path === '/test-advanced') return handleAdvancedTest(request, env);
   if (method === 'POST' && path === '/test-stealth') return handleStealthTest(request, env);
   if (method === 'POST' && path === '/proxy-reload') {
-    return json({ success: true, message: 'Proxy reloaded (placeholder)' });
+    return json({
+      success: true,
+      message: 'Proxy configuration reloaded (placeholder)'
+    });
   }
   if (method === 'POST' && path === '/clear-cache') {
     ipManager = new IPManager();
     fingerprintGen = new FingerprintGenerator();
     headerGen = new HeaderGenerator(ipManager, fingerprintGen);
     requestExecutor = new RequestExecutor(ipManager, fingerprintGen, headerGen);
-    return json({ success: true, message: 'Cache cleared', timestamp: new Date().toISOString() });
+    return json({
+      success: true,
+      message: 'Cache cleared',
+      timestamp: new Date().toISOString()
+    });
   }
 
   // 404
@@ -887,8 +1046,8 @@ async function handleRequest(request, env) {
     error: {
       code: 'ROUTE_NOT_FOUND',
       message: 'API route not found',
-      method,
-      path
+      method: method,
+      path: path
     }
   }, 404);
 }
